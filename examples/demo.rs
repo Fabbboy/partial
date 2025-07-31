@@ -1,4 +1,4 @@
-use partial::{partial::PartialBox, Partial};
+use partial::{Partial, partial::PartialBox};
 
 #[derive(Partial, Debug)]
 struct Example {
@@ -7,10 +7,9 @@ struct Example {
     field2: String,
 }
 
-#[derive(Partial)]
-struct Lol(#[partial] pub usize, u32);
-
 fn main() {
-    let mut exmp = PartialBox::Unpatched(ExampleUnpatched {field1: 10});
+    let mut exmp = PartialBox::Unpatched(ExampleUnpatched { field1: 10 });
     println!("Unpatched Example: {:?}", exmp);
+    exmp = exmp.patch(("Hello, World!".to_string(),));
+    println!("Patched Example: {:?}", exmp);
 }

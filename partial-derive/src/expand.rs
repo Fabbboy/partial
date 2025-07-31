@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
+use syn::{Attribute, Meta, Token, punctuated::Punctuated};
 use syn::{DataStruct, DeriveInput, Error, Fields};
 
 const PARTIAL_ATTRIBUTE: &str = "partial";
@@ -39,6 +40,41 @@ fn remove_marker_attributes(fields: &mut Vec<syn::Field>) {
             .attrs
             .retain(|attr| !attr.path().is_ident(PARTIAL_ATTRIBUTE));
     }
+}
+
+fn filter_struct_attributes(attrs: &[Attribute]) -> Vec<Attribute> {
+    let mut out = Vec::new();
+    for attr in attrs {
+        if attr.path().is_ident("derive") {
+            if let Meta::List(meta_list) = &attr.meta {
+                if let Ok(metas) =
+                    meta_list.parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)
+                {
+                    let filtered: Punctuated<syn::Path, Token![,]> = metas
+                        .into_iter()
+                        .filter(|path| !path.is_ident("Partial"))
+                        .collect();
+
+                    if filtered.is_empty() {
+                        continue;
+                    }
+
+                    let mut list = meta_list.clone();
+                    list.tokens = quote! { #filtered };
+                    let mut new_attr = attr.clone();
+                    new_attr.meta = Meta::List(list);
+                    out.push(new_attr);
+                } else {
+                    out.push(attr.clone());
+                }
+            } else {
+                out.push(attr.clone());
+            }
+        } else {
+            out.push(attr.clone());
+        }
+    }
+    out
 }
 
 fn name_unpatched_struct(ident: &Ident) -> Ident {
@@ -159,18 +195,22 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
     remove_marker_attributes(&mut fields);
     let vis = &ast.vis;
     let unpatched_name = name_unpatched_struct(struct_name);
+    let attrs = filter_struct_attributes(&ast.attrs);
 
     match &st.fields {
         Fields::Named(_) => {
-            let field_idents: Vec<_> = fields
-                .iter()
-                .map(|f| f.ident.as_ref().expect("Expected named field"))
-                .collect();
-            let field_types: Vec<_> = extract_field_types(&fields);
+            let field_defs = fields.iter().map(|f| {
+                let attrs = &f.attrs;
+                let vis = &f.vis;
+                let ident = f.ident.as_ref().expect("Expected named field");
+                let ty = &f.ty;
+                quote! { #(#attrs)* #vis #ident: #ty }
+            });
 
             quote! {
+                #(#attrs)*
                 #vis struct #unpatched_name #generics {
-                   #(#field_idents: #field_types),*
+                    #(#field_defs,)*
                 }
 
                 unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
@@ -178,11 +218,17 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
         }
 
         Fields::Unnamed(_) => {
-            let field_types: Vec<_> = extract_field_types(&fields);
+            let field_defs = fields.iter().map(|f| {
+                let attrs = &f.attrs;
+                let vis = &f.vis;
+                let ty = &f.ty;
+                quote! { #(#attrs)* #vis #ty }
+            });
 
             quote! {
+                #(#attrs)*
                 #vis struct #unpatched_name #generics (
-                    #(#field_types),*
+                    #(#field_defs,)*
                 );
 
                 unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
@@ -191,6 +237,7 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
 
         Fields::Unit => {
             quote! {
+                #(#attrs)*
                 #vis struct #unpatched_name;
 
                 unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
