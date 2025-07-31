@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
-use syn::{DataStruct, DeriveInput, Error};
+use syn::spanned::Spanned;
+use syn::{DataStruct, DeriveInput, Error, Fields};
 
 const PARTIAL_ATTRIBUTE: &str = "partial";
 
@@ -61,37 +64,93 @@ fn expand_patchable_impl(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
     let struct_name = &ast.ident;
     let unpatched_name = name_unpatched_struct(&ast.ident);
     let generics = &ast.generics;
-    let fields = collect_fields(st, true);
-    let field_types = extract_field_types(&fields);
 
-    let indices = (0..field_types.len()).map(syn::Index::from).collect::<Vec<_>>();
+    let all_fields: Vec<_> = match &st.fields {
+        Fields::Named(fields) => fields.named.iter().collect(),
+        Fields::Unnamed(fields) => fields.unnamed.iter().collect(),
+        Fields::Unit => vec![],
+    };
 
+    // Partial fields only
+    let partial_fields: Vec<_> = all_fields
+        .iter()
+        .filter(|f| f.attrs.iter().any(|a| a.path().is_ident(PARTIAL_ATTRIBUTE)))
+        .cloned()
+        .collect();
 
-    match st.fields {
-        syn::Fields::Named(_) => {
-            let field_idents: Vec<_> = fields
-                .iter()
-                .map(|f| f.ident.as_ref().expect("Expected named field"))
-                .collect();
+    let arg_types: Vec<_> = partial_fields.iter().map(|f| f.ty.clone()).collect();
+    let mut arg_indices = HashMap::new();
+    for (i, f) in partial_fields.iter().enumerate() {
+        if let Some(ident) = f.ident.clone() {
+            arg_indices.insert(ident.to_string(), syn::Index::from(i));
+        }
+    }
+
+    match &st.fields {
+        Fields::Named(_) => {
+            let assignments = all_fields.iter().map(|f| {
+                let ident = f.ident.as_ref().unwrap();
+                if f.attrs.iter().any(|a| a.path().is_ident(PARTIAL_ATTRIBUTE)) {
+                    let idx = &arg_indices[&ident.to_string()];
+                    quote! { #ident: args.#idx }
+                } else {
+                    quote! { #ident: self.#ident }
+                }
+            });
 
             quote! {
                 unsafe impl #generics ::partial::patch::Patchable for #unpatched_name #generics {
-                    type Args = (#(#field_types),*);
+                    type Args = ((#(#arg_types,)*));
                     type Patched = #struct_name #generics;
 
                     fn patch(&self, args: Self::Args) -> Self::Patched {
                         #struct_name {
-                            #(#field_idents: args.#indices),*
+                            #(#assignments),*
                         }
                     }
                 }
             }
         }
-        _ => Error::new_spanned(
-            ast,
-            "Partial can only be derived for structs with named fields",
-        )
-        .to_compile_error(),
+        Fields::Unnamed(_) => {
+            let mut arg_index = 0_usize;
+            let mut self_index = 0_usize;
+
+            let assignments = all_fields.iter().map(|f| {
+                if f.attrs.iter().any(|a| a.path().is_ident(PARTIAL_ATTRIBUTE)) {
+                    let idx = syn::Index::from(arg_index);
+                    arg_index += 1;
+                    quote! { args.#idx }
+                } else {
+                    let idx = syn::Index::from(self_index);
+                    self_index += 1;
+                    quote! { self.#idx }
+                }
+            });
+
+            quote! {
+                unsafe impl #generics ::partial::patch::Patchable for #unpatched_name #generics {
+                    type Args = (#(#arg_types,)*);
+                    type Patched = #struct_name #generics;
+
+                    fn patch(&self, args: Self::Args) -> Self::Patched {
+                        #struct_name(#(#assignments),*)
+                    }
+                }
+            }
+        }
+
+        Fields::Unit => {
+            quote! {
+                unsafe impl #generics ::partial::patch::Patchable for #unpatched_name #generics {
+                    type Args = ();
+                    type Patched = #struct_name #generics;
+
+                    fn patch(&self, _args: Self::Args) -> Self::Patched {
+                        #struct_name
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -100,22 +159,45 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
     let generics = &ast.generics;
     let mut fields = collect_fields(st, false);
     remove_marker_attributes(&mut fields);
-
-    let field_idents: Vec<_> = fields
-        .iter()
-        .map(|f| f.ident.as_ref().expect("Expected named field"))
-        .collect();
-    let field_types = extract_field_types(&fields);
-
     let vis = &ast.vis;
     let unpatched_name = name_unpatched_struct(struct_name);
 
-    quote! {
-        #vis struct #unpatched_name #generics {
-           #(#field_idents: #field_types),*
+    match &st.fields {
+        Fields::Named(_) => {
+            let field_idents: Vec<_> = fields
+                .iter()
+                .map(|f| f.ident.as_ref().expect("Expected named field"))
+                .collect();
+            let field_types: Vec<_> = extract_field_types(&fields);
+
+            quote! {
+                #vis struct #unpatched_name #generics {
+                   #(#field_idents: #field_types),*
+                }
+
+                unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
+            }
         }
 
-        unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
+        Fields::Unnamed(_) => {
+            let field_types: Vec<_> = extract_field_types(&fields);
+
+            quote! {
+                #vis struct #unpatched_name #generics (
+                    #(#field_types),*
+                );
+
+                unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
+            }
+        }
+
+        Fields::Unit => {
+            quote! {
+                #vis struct #unpatched_name;
+
+                unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
+            }
+        }
     }
 }
 
