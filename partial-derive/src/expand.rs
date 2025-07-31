@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
-use syn::spanned::Spanned;
 use syn::{DataStruct, DeriveInput, Error, Fields};
 
 const PARTIAL_ATTRIBUTE: &str = "partial";
@@ -71,7 +70,6 @@ fn expand_patchable_impl(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
         Fields::Unit => vec![],
     };
 
-    // Partial fields only
     let partial_fields: Vec<_> = all_fields
         .iter()
         .filter(|f| f.attrs.iter().any(|a| a.path().is_ident(PARTIAL_ATTRIBUTE)))
