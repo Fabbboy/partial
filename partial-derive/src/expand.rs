@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
-use serde::{Deserialize, Serialize};
 use syn::{Attribute, Meta, Token, punctuated::Punctuated};
 use syn::{DataStruct, DeriveInput, Error, Fields};
 
@@ -194,6 +193,11 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
     let unpatched_name = name_unpatched_struct(struct_name);
     let attrs = filter_struct_attributes(&ast.attrs);
 
+    #[cfg(feature = "serde")]
+    let serde_derives = quote! { ::serde::Serialize, ::serde::Deserialize, };
+    #[cfg(not(feature = "serde"))]
+    let serde_derives = quote! {};
+
     match &st.fields {
         Fields::Named(_) => {
             let field_defs = fields.iter().map(|f| {
@@ -206,7 +210,7 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
 
             quote! {
                 #(#attrs)*
-                #[derive(::serde::Serialize, ::serde::Deserialize, ::std::fmt::Debug)]
+                #[derive(#serde_derives ::std::fmt::Debug)]
                 #vis struct #unpatched_name #generics {
                     #(#field_defs,)*
                 }
@@ -225,7 +229,7 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
 
             quote! {
                 #(#attrs)*
-                #[derive(::serde::Serialize, ::serde::Deserialize, ::std::fmt::Debug)]
+                #[derive(#serde_derives ::std::fmt::Debug)]
                 #vis struct #unpatched_name #generics (
                     #(#field_defs,)*
                 );
@@ -237,7 +241,7 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
         Fields::Unit => {
             quote! {
                 #(#attrs)*
-                #[derive(::serde::Serialize, ::serde::Deserialize, ::std::fmt::Debug)]
+                #[derive(#serde_derives ::std::fmt::Debug)]
                 #vis struct #unpatched_name;
 
                 unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
