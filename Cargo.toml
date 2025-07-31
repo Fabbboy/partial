@@ -8,7 +8,7 @@ traversal-derive = { workspace = true }
 traversal-core = { workspace = true }
 
 [workspace]
-members = ["traversal-core", "partial-derive"]
+members = ["traversal-core", "traversal-derive"]
 resolver = "3"
 
 [workspace.dependencies]
