@@ -1,26 +1,20 @@
 [package]
-name = "partial"
+name = "traversal"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-partial-derive = { workspace = true }
-partial-core = { workspace = true }
-serde = { workspace = true, optional = true }
-
-[features]
-default = []
-serde = ["dep:serde", "partial-core/serde", "partial-derive/serde"]
+traversal-derive = { workspace = true }
+traversal-core = { workspace = true }
 
 [workspace]
-members = ["partial-core", "partial-derive"]
+members = ["traversal-core", "partial-derive"]
 resolver = "3"
 
 [workspace.dependencies]
-partial-core = { path = "partial-core" }
-partial-derive = { path = "partial-derive" }
+traversal-core = { path = "traversal-core" }
+traversal-derive = { path = "traversal-derive" }
 
 proc-macro2 = "1.0.95"
 quote = "1.0.40"
 syn = "2.0.104"
-serde = "1.0.219"
