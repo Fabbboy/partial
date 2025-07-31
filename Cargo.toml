@@ -6,6 +6,11 @@ edition = "2024"
 [dependencies]
 partial-derive = { workspace = true }
 partial-core = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "partial-core/serde", "partial-derive/serde"]
 
 [workspace]
 members = ["partial-core", "partial-derive"]
