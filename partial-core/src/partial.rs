@@ -1,6 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use crate::patch::Patchable;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum PartialBox<T>
 where
     T: Patchable,

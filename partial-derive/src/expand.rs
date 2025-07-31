@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
+use serde::{Deserialize, Serialize};
 use syn::{Attribute, Meta, Token, punctuated::Punctuated};
 use syn::{DataStruct, DeriveInput, Error, Fields};
 
@@ -80,10 +81,6 @@ fn filter_struct_attributes(attrs: &[Attribute]) -> Vec<Attribute> {
 fn name_unpatched_struct(ident: &Ident) -> Ident {
     let new_name = format!("{}Unpatched", ident);
     Ident::new(&new_name, ident.span())
-}
-
-fn extract_field_types(fields: &[syn::Field]) -> Vec<syn::Type> {
-    fields.iter().map(|f| f.ty.clone()).collect()
 }
 
 fn expand_patched_impl(ast: &DeriveInput) -> TokenStream {
@@ -209,6 +206,7 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
 
             quote! {
                 #(#attrs)*
+                #[derive(::serde::Serialize, ::serde::Deserialize, ::std::fmt::Debug)]
                 #vis struct #unpatched_name #generics {
                     #(#field_defs,)*
                 }
@@ -227,6 +225,7 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
 
             quote! {
                 #(#attrs)*
+                #[derive(::serde::Serialize, ::serde::Deserialize, ::std::fmt::Debug)]
                 #vis struct #unpatched_name #generics (
                     #(#field_defs,)*
                 );
@@ -238,6 +237,7 @@ fn expand_unpatched_struct(ast: &DeriveInput, st: &DataStruct) -> TokenStream {
         Fields::Unit => {
             quote! {
                 #(#attrs)*
+                #[derive(::serde::Serialize, ::serde::Deserialize, ::std::fmt::Debug)]
                 #vis struct #unpatched_name;
 
                 unsafe impl #generics ::partial::marker::Unpatched for #unpatched_name #generics {}
